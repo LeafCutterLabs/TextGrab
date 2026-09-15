@@ -1,0 +1,64 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\TextGrab.ico</ApplicationIcon>
+    <AssemblyName>TextGrab</AssemblyName>
+    <RootNamespace>TextGrab</RootNamespace>
+    <Version>1.2.1</Version>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <PublishSingleFile>false</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- WPF reads PerMonitorV2 from the application manifest; WinForms is used only for the tray icon. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\TextGrab.ico" LogicalName="TextGrab.Assets.TextGrab.ico" />
+    <PackageReference Include="Tesseract" Version="5.2.0" />
+  </ItemGroup>
+
+  <Target Name="RemoveUnusedX86OcrAssets" BeforeTargets="_GetCopyToOutputDirectoryItems;ComputeFilesToPublish">
+    <ItemGroup>
+      <None Remove="$(NuGetPackageRoot)tesseract\5.2.0\x86\*.dll" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="RemoveUnusedX86OcrAssetsFromPublish" AfterTargets="Publish">
+    <RemoveDir Directories="$(PublishDir)x86" Condition="Exists('$(PublishDir)x86')" />
+  </Target>
+
+  <ItemGroup>
+    <Content Include="tessdata\eng.traineddata" Condition="Exists('tessdata\eng.traineddata')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>tessdata\eng.traineddata</TargetPath>
+    </Content>
+    <Content Include="tessdata\spa.traineddata" Condition="Exists('tessdata\spa.traineddata')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>tessdata\spa.traineddata</TargetPath>
+    </Content>
+    <Content Include="native\x64\msvcp140.dll;native\x64\vcruntime140.dll;native\x64\vcruntime140_1.dll" Condition="Exists('native\x64')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>%(Filename)%(Extension)</TargetPath>
+    </Content>
+    <Content Include="ThirdPartyNotices\**\*" Condition="Exists('ThirdPartyNotices')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>ThirdPartyNotices\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+    </Content>
+  </ItemGroup>
+</Project>

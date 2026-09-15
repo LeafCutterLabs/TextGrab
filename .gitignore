@@ -1,0 +1,5 @@
+.tools/
+software/**/bin/
+software/**/obj/
+software/artifacts/
+*.user

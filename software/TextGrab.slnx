@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="TextGrab/TextGrab.csproj" />
+  <Project Path="TextGrab.Tests/TextGrab.Tests.csproj" />
+</Solution>
