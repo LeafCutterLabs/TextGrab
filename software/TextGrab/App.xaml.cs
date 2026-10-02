@@ -6,6 +6,7 @@ using System.Windows.Media.Imaging;
 using TextGrab.Capture;
 using TextGrab.Clipboard;
 using TextGrab.Core;
+using TextGrab.History;
 using TextGrab.Interop;
 using TextGrab.Ocr;
 using TextGrab.UI;
@@ -18,10 +19,12 @@ public partial class App : System.Windows.Application
     private readonly OperationGate _gate = new();
     private readonly ClipboardService _clipboard = new();
     private readonly ScreenCaptureService _capture = new();
+    private readonly HistoryStore _history = new();
     private readonly CancellationTokenSource _lifetime = new();
     private TesseractOcrEngine? _ocr;
     private TrayController? _tray;
     private ResultWindow? _result;
+    private HistoryWindow? _historyWindow;
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -49,15 +52,24 @@ public partial class App : System.Windows.Application
         }
 
         _tray = new TrayController();
-        _result = new ResultWindow(_clipboard);
+        _result = new ResultWindow(_clipboard, _history);
+        _historyWindow = new HistoryWindow(_history, _clipboard);
         _tray.CaptureRequested += CaptureRequested;
         _tray.ClipboardOcrRequested += ClipboardRequested;
+        _tray.HistoryRequested += HistoryRequested;
         _tray.ShortcutChangeRequested += ShortcutChangeRequested;
         _tray.ExitRequested += ExitRequested;
-        if (!_tray.HotkeyRegistered)
+        if (!_tray.CaptureHotkeyRegistered || !_tray.HistoryHotkeyRegistered)
         {
-            _tray.ShowHotkeyConflict();
-            System.Windows.MessageBox.Show("Ctrl+Alt+T is already used by another app. TextGrab is still available from its tray icon.",
+            var captureUnavailable = !_tray.CaptureHotkeyRegistered;
+            var historyUnavailable = !_tray.HistoryHotkeyRegistered;
+            _tray.ShowHotkeyConflict(captureUnavailable, historyUnavailable);
+            var message = captureUnavailable && historyUnavailable
+                ? "Ctrl+Alt+T and Ctrl+Alt+V are already used by another app. Capture Region and Snip History remain available from the tray icon."
+                : captureUnavailable
+                    ? "Ctrl+Alt+T is already used by another app. Capture Region remains available from the tray icon."
+                    : "Ctrl+Alt+V is already used by another app. Snip History remains available from the tray icon.";
+            System.Windows.MessageBox.Show(message,
                 "TextGrab hotkey unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
@@ -65,16 +77,26 @@ public partial class App : System.Windows.Application
     private void ShortcutChangeRequested(object? sender, EventArgs e)
     {
         if (_tray is null) return;
-        var dialog = new HotkeyWindow(_tray.CurrentHotkey);
+        var dialog = new HotkeyWindow(_tray.CurrentCaptureHotkey, _tray.CurrentHistoryHotkey);
         if (dialog.ShowDialog() != true) return;
 
-        if (_tray.TryChangeHotkey(dialog.SelectedShortcut, out var error))
+        if (_tray.TryChangeHotkeys(dialog.CaptureShortcut, dialog.HistoryShortcut, out var error))
         {
-            _tray.ShowMessage("TextGrab shortcut changed", $"Region capture is now {dialog.SelectedShortcut.DisplayText}. This change lasts until TextGrab exits.");
+            _tray.ShowMessage("TextGrab shortcuts changed", $"Capture is {dialog.CaptureShortcut.DisplayText}; history is {dialog.HistoryShortcut.DisplayText}. Changes last until TextGrab exits.");
             return;
         }
 
         System.Windows.MessageBox.Show(error, "TextGrab shortcut unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
+    private void HistoryRequested(object? sender, EventArgs e)
+    {
+        if (_gate.IsBusy)
+        {
+            _tray?.ShowMessage("TextGrab is busy", "Finish or cancel the current operation first.");
+            return;
+        }
+        _historyWindow?.ShowPicker();
     }
 
     private static void ConfigureNativeLoading()
@@ -95,6 +117,7 @@ public partial class App : System.Windows.Application
         }
         try
         {
+            _historyWindow?.HidePicker();
             _result?.ClearAndHide();
             var selector = new RegionSelector();
             var rect = await selector.SelectAsync(_lifetime.Token);
@@ -120,6 +143,7 @@ public partial class App : System.Windows.Application
         }
         try
         {
+            _historyWindow?.HidePicker();
             _result?.ClearAndHide();
             var image = await _clipboard.GetImageAsync(_lifetime.Token);
             await RecognizeAndShowAsync(image, _lifetime.Token);
@@ -131,12 +155,15 @@ public partial class App : System.Windows.Application
     private async Task RecognizeAndShowAsync(BitmapSource image, CancellationToken cancellationToken)
     {
         if (_ocr is null) throw new InvalidOperationException("The OCR engine is unavailable.");
+        var thumbnail = ThumbnailFactory.Create(image);
         var lines = await _ocr.RecognizeLinesAsync(image, cancellationToken);
         var raw = string.Join("\r\n", lines);
         if (string.IsNullOrWhiteSpace(raw))
             throw new InvalidOperationException("No text was found in that image. Try a larger or sharper selection.");
-        _result ??= new ResultWindow(_clipboard);
-        _result.SetResult(raw);
+        var clean = TextCleanup.Clean(raw);
+        var entry = _history.Add(clean, thumbnail);
+        _result ??= new ResultWindow(_clipboard, _history);
+        _result.SetResult(entry);
         await _result.CopyCurrentTextAsync("Copied automatically");
     }
 
@@ -159,6 +186,8 @@ public partial class App : System.Windows.Application
     {
         _lifetime.Cancel();
         _result?.ForceClose();
+        _historyWindow?.ForceClose();
+        _history.Clear();
         foreach (Window window in Windows.Cast<Window>().ToArray()) window.Close();
         Shutdown();
     }
@@ -166,6 +195,7 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e)
     {
         _lifetime.Cancel();
+        _history.Clear();
         _tray?.Dispose();
         _ocr?.Dispose();
         _lifetime.Dispose();

@@ -3,6 +3,7 @@ namespace TextGrab.Core;
 public sealed record HotkeySpec(bool Control, bool Alt, bool Shift, uint VirtualKey, string KeyName)
 {
     public static HotkeySpec Default { get; } = new(true, true, false, 'T', "T");
+    public static HotkeySpec HistoryDefault { get; } = new(true, true, false, 'V', "V");
 
     public string DisplayText
     {

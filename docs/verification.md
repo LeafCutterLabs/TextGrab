@@ -2,6 +2,23 @@
 
 This file separates measured checks from release checks that need additional hardware or operating systems.
 
+## Version 1.3.0 — session-only visual snip history
+
+- Added a 25-entry in-memory history for successful TextGrab OCR operations. Each entry retains the latest edited text and a detached frozen thumbnail capped at 120 × 72 pixels; full capture images are not retained by the history.
+- Added the Ctrl+Alt+V history picker and tray fallback with newest-first previews, relative ages, keyboard/mouse-wheel navigation, copy-to-clipboard selection, individual deletion, clear-all, empty state, and close-on-deactivation behavior.
+- Capture and history shortcuts are separately configurable for the current run. Applying changes is transactional, identical shortcuts are rejected, and external registration conflicts restore the prior pair where available.
+- Release build passed with zero warnings/errors. The focused harness passed 20/20 checks, including capacity eviction, ordering, edits, removal, cleanup, thumbnail dimensions/freezing, picker row release, history labels, editor-to-history updates, and both shortcut defaults. A synthetic history-picker render was visually inspected.
+- Both published packages passed the real bilingual OCR smoke test, recognized `TEXTGRAB 12345 ESPANOL 67890`, and loaded OCR and VC runtime modules from their respective publish directories. Recognition completed in 361 ms for the self-contained build and 372 ms for the compact build.
+- Physical hotkey-conflict, clipboard-contention, mixed-DPI, multi-monitor placement, and OS-level no-file/no-network checks remain manual release gates.
+
+## Delivered builds (1.3.0)
+
+- Portable no-prerequisites ZIP: `TextGrab-v1.3.0-win-x64.zip` — 83,230,622 bytes (79.37 MiB).
+- SHA-256: `558E217BEFCB01B1D8A7AE646A5B621D09636CD8A51FCCBE274B4F54FEBD759A`.
+- Compact runtime-dependent ZIP: `TextGrab-v1.3.0-compact-requires-dotnet10-win-x64.zip` — 13,421,310 bytes (12.80 MiB).
+- SHA-256: `BF316437D8CF9D0AB80DE508A5F0CF7B8C91CD51D5C44D1863DFF8B680DD75AC`.
+- Smoke reports: `software/artifacts/smoke-report.json` and `software/artifacts/smoke-report-compact.json`.
+
 ## Version 1.2.1 — automatic copy, shortcut reassignment, Spanish OCR, and compact multiline text
 
 - Region and clipboard OCR now copy the initial cleaned result to the Windows clipboard automatically. The result remains editable, and Copy All recopies the current editor contents exactly.

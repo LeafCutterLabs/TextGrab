@@ -1,16 +1,18 @@
-# TextGrab 1.2.1 software
+# TextGrab 1.3.0 software
 
 ## Use
 
 Run `TextGrab.exe`. The app lives in the Windows notification area.
 
 - Press **Ctrl+Alt+T**, then drag a rectangle around text. Press **Esc** to cancel.
-- Right-click the tray icon for **Capture Region**, **OCR Clipboard Image**, **Keyboard shortcut**, or **Exit**. Shortcut changes last for the current run and create no settings file.
+- Press **Ctrl+Alt+V** to open the current session's **Snip History**. Use Up/Down or the mouse wheel, then press Enter to put the selected text back on the clipboard; press normal Ctrl+V to paste it.
+- Right-click the tray icon for **Capture Region**, **OCR Clipboard Image**, **Snip History**, **Keyboard shortcuts**, or **Exit**. Shortcut changes last for the current run and create no settings file.
 - English and Spanish are the only OCR languages. Both models run locally and are bundled with the app.
 - The result panel shows one cleaned, editable copy. Cleanup normalizes line endings to CRLF, trims spaces and tabs at the end of each line, and removes every empty or whitespace-only line. It preserves leading and internal spacing on lines that contain text.
 - TextGrab automatically copies that initial cleaned result to the clipboard. Type, add new lines, select text, and use normal undo, Ctrl+A, and Ctrl+C while the current result is open. **Copy All** copies the editor text exactly, including your changes.
+- Snip History keeps the 25 newest successful OCR results in memory until TextGrab exits. Each entry has a small source-image thumbnail, its latest edited text, and its age. Delete removes one entry and Clear All removes the session history. It does not monitor the general Windows clipboard or retain full screenshots.
 
-If Ctrl+Alt+T belongs to another app, TextGrab shows a conflict message and remains usable from the tray menu. Only one capture or OCR operation runs at once. Errors for a busy clipboard, missing clipboard image, missing OCR assets, an oversized image, native load failure, capture failure, and an empty OCR result are presented in the UI.
+If Ctrl+Alt+T or Ctrl+Alt+V belongs to another app, TextGrab shows a conflict message and the affected command remains usable from the tray menu. Only one capture or OCR operation runs at once. Errors for a busy clipboard, missing clipboard image, missing OCR assets, an oversized image, native load failure, capture failure, and an empty OCR result are presented in the UI.
 
 ## Build and test
 
@@ -59,3 +61,5 @@ V1 uses Tesseract 5.2.0 with the English and Spanish `tessdata_fast` models. Win
 Capture, OCR, cleanup, clipboard access, operation gating, and UI live in separate components. Screen capture uses Win32 physical-pixel coordinates and a top-down in-memory DIB. A translucent overlay is created for every monitor; cursor polling during the drag allows a selection to span monitors, negative desktop coordinates, and DPI boundaries. The app rejects images above 50 megapixels to bound transient memory use.
 
 OCR runs on a worker thread so native recognition does not freeze the UI. Cancellation is checked before conversion, before native recognition, and after recognition; the Tesseract call itself cannot be interrupted safely once entered. Pixel and BMP byte arrays are zeroed in `finally` blocks. Managed immutable strings remain subject to normal .NET lifetime rules. Starting a new region or clipboard OCR operation, closing the result panel, or exiting clears the editor text and undo history so an earlier capture cannot be restored with Undo.
+
+Successful OCR results are represented separately in a bounded in-memory session history. History thumbnails are detached, frozen copies no larger than 120 × 72 pixels, so transformation objects cannot keep full capture buffers alive. History text follows edits to the active result, and the complete store is cleared on exit. No history content is written to disk or synced.

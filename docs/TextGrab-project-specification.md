@@ -21,7 +21,7 @@ Non-goals: full document management or annotation, cloud synchronization, and ac
 - Show one cleaned copy. Cleanup normalizes line endings, trims trailing whitespace, removes every empty or whitespace-only line, and preserves spacing on lines that contain text. Copy the initial clean result to the clipboard automatically; Copy All copies the edited text exactly.
 - Explicit clipboard-image OCR through the same processing pipeline.
 - Physical-pixel screen coordinates, per-monitor DPI-aware overlays, negative monitor coordinates, and cross-monitor selection. Result placement stays within the active monitor's working area.
-- No content files, history, telemetry, network requests, saved settings, or content logs. Release image buffers after processing and clear result references when the panel closes. Explicit Windows clipboard copies are outside the app's persistence control.
+- No content files, persistent history, telemetry, network requests, saved settings, or content logs. Keep at most 25 successful TextGrab OCR results in memory for the current session, with detached thumbnails rather than full captures, and clear them on exit. Do not monitor the general clipboard. Explicit Windows clipboard copies are outside the app's persistence control.
 - Responsive UI, one operation at a time, and clear failures for empty/missing images, missing engine assets, failed capture, and clipboard contention.
 
 ## V1 Features
@@ -58,7 +58,7 @@ See `verification.md` for measured results and `manual-acceptance.md` for checks
 
 ## Out of Scope for V1
 
-Positional text overlay, history, table reconstruction, AI rewriting, document import/annotation/management, cloud sync, additional OCR languages, ARM64, and 32-bit releases.
+Positional text overlay, persistent or system-wide clipboard history, table reconstruction, AI rewriting, document import/annotation/management, cloud sync, additional OCR languages, ARM64, and 32-bit releases.
 
 ## Start Small
 

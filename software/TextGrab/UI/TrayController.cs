@@ -8,21 +8,27 @@ namespace TextGrab.UI;
 
 public sealed class TrayController : IDisposable
 {
-    private const int HotkeyId = 0x5447;
+    private const int CaptureHotkeyId = 0x5447;
+    private const int HistoryHotkeyId = 0x5448;
     private readonly Forms.NotifyIcon _icon;
     private readonly Icon _ownedIcon;
     private readonly HwndSource _messageWindow;
     private readonly Forms.ToolStripMenuItem _shortcutItem;
     private bool _disposed;
-    private bool _hotkeyRegistered;
-    private HotkeySpec _currentHotkey = HotkeySpec.Default;
+    private bool _captureHotkeyRegistered;
+    private bool _historyHotkeyRegistered;
+    private HotkeySpec _currentCaptureHotkey = HotkeySpec.Default;
+    private HotkeySpec _currentHistoryHotkey = HotkeySpec.HistoryDefault;
 
     public event EventHandler? CaptureRequested;
     public event EventHandler? ClipboardOcrRequested;
+    public event EventHandler? HistoryRequested;
     public event EventHandler? ShortcutChangeRequested;
     public event EventHandler? ExitRequested;
-    public bool HotkeyRegistered => _hotkeyRegistered;
-    public HotkeySpec CurrentHotkey => _currentHotkey;
+    public bool CaptureHotkeyRegistered => _captureHotkeyRegistered;
+    public bool HistoryHotkeyRegistered => _historyHotkeyRegistered;
+    public HotkeySpec CurrentCaptureHotkey => _currentCaptureHotkey;
+    public HotkeySpec CurrentHistoryHotkey => _currentHistoryHotkey;
 
     public TrayController()
     {
@@ -30,6 +36,7 @@ public sealed class TrayController : IDisposable
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Capture Region", null, (_, _) => CaptureRequested?.Invoke(this, EventArgs.Empty));
         menu.Items.Add("OCR Clipboard Image", null, (_, _) => ClipboardOcrRequested?.Invoke(this, EventArgs.Empty));
+        menu.Items.Add("Snip History", null, (_, _) => HistoryRequested?.Invoke(this, EventArgs.Empty));
         menu.Items.Add(new Forms.ToolStripSeparator());
         _shortcutItem = new Forms.ToolStripMenuItem();
         _shortcutItem.Click += (_, _) => ShortcutChangeRequested?.Invoke(this, EventArgs.Empty);
@@ -51,56 +58,72 @@ public sealed class TrayController : IDisposable
             WindowStyle = 0
         });
         _messageWindow.AddHook(WindowProc);
-        _hotkeyRegistered = Register(_currentHotkey);
+        _captureHotkeyRegistered = Register(CaptureHotkeyId, _currentCaptureHotkey);
+        _historyHotkeyRegistered = Register(HistoryHotkeyId, _currentHistoryHotkey);
         UpdateShortcutLabels();
     }
 
-    public bool TryChangeHotkey(HotkeySpec requested, out string error)
+    public bool TryChangeHotkeys(HotkeySpec requestedCapture, HotkeySpec requestedHistory, out string error)
     {
         error = string.Empty;
-        if (requested == _currentHotkey && _hotkeyRegistered) return true;
-
-        var previous = _currentHotkey;
-        var previousWasRegistered = _hotkeyRegistered;
-        if (previousWasRegistered) NativeMethods.UnregisterHotKey(_messageWindow.Handle, HotkeyId);
-        _hotkeyRegistered = false;
-
-        if (Register(requested))
+        if (requestedCapture == requestedHistory)
         {
-            _currentHotkey = requested;
-            _hotkeyRegistered = true;
+            error = "Capture region and Snip history must use different shortcuts.";
+            return false;
+        }
+
+        var previousCapture = _currentCaptureHotkey;
+        var previousHistory = _currentHistoryHotkey;
+        if (_captureHotkeyRegistered) NativeMethods.UnregisterHotKey(_messageWindow.Handle, CaptureHotkeyId);
+        if (_historyHotkeyRegistered) NativeMethods.UnregisterHotKey(_messageWindow.Handle, HistoryHotkeyId);
+        _captureHotkeyRegistered = false;
+        _historyHotkeyRegistered = false;
+
+        var captureRegistered = Register(CaptureHotkeyId, requestedCapture);
+        var historyRegistered = captureRegistered && Register(HistoryHotkeyId, requestedHistory);
+        if (captureRegistered && historyRegistered)
+        {
+            _currentCaptureHotkey = requestedCapture;
+            _currentHistoryHotkey = requestedHistory;
+            _captureHotkeyRegistered = true;
+            _historyHotkeyRegistered = true;
             UpdateShortcutLabels();
             return true;
         }
 
-        if (previousWasRegistered) _hotkeyRegistered = Register(previous);
+        if (captureRegistered) NativeMethods.UnregisterHotKey(_messageWindow.Handle, CaptureHotkeyId);
+        if (historyRegistered) NativeMethods.UnregisterHotKey(_messageWindow.Handle, HistoryHotkeyId);
+        _captureHotkeyRegistered = Register(CaptureHotkeyId, previousCapture);
+        _historyHotkeyRegistered = Register(HistoryHotkeyId, previousHistory);
         UpdateShortcutLabels();
-        error = previousWasRegistered && _hotkeyRegistered
-            ? $"{requested.DisplayText} is already used by Windows or another app. The shortcut remains {previous.DisplayText}."
-            : $"{requested.DisplayText} is already used by Windows or another app. Region capture remains available from the tray menu.";
+        var failed = captureRegistered ? requestedHistory : requestedCapture;
+        error = $"{failed.DisplayText} is already used by Windows or another app. The previous shortcuts remain active where available; both commands are also in the tray menu.";
         return false;
     }
 
-    private bool Register(HotkeySpec shortcut)
+    private bool Register(int id, HotkeySpec shortcut)
     {
         var modifiers = NativeMethods.ModNoRepeat;
         if (shortcut.Control) modifiers |= NativeMethods.ModControl;
         if (shortcut.Alt) modifiers |= NativeMethods.ModAlt;
         if (shortcut.Shift) modifiers |= NativeMethods.ModShift;
-        return NativeMethods.RegisterHotKey(_messageWindow.Handle, HotkeyId, modifiers, shortcut.VirtualKey);
+        return NativeMethods.RegisterHotKey(_messageWindow.Handle, id, modifiers, shortcut.VirtualKey);
     }
 
     private void UpdateShortcutLabels()
     {
-        var shortcut = _currentHotkey.DisplayText;
-        _shortcutItem.Text = $"Keyboard shortcut: {shortcut}…";
-        _icon.Text = $"TextGrab — {shortcut}";
+        _shortcutItem.Text = "Keyboard shortcuts…";
+        _icon.Text = $"TextGrab — capture {_currentCaptureHotkey.DisplayText}; history {_currentHistoryHotkey.DisplayText}";
     }
 
-    public void ShowHotkeyConflict()
+    public void ShowHotkeyConflict(bool captureUnavailable, bool historyUnavailable)
     {
         _icon.BalloonTipTitle = "TextGrab hotkey unavailable";
-        _icon.BalloonTipText = "Ctrl+Alt+T is already used by another app. Use the TextGrab tray menu to capture.";
+        _icon.BalloonTipText = captureUnavailable && historyUnavailable
+            ? "The capture and history shortcuts are already used by another app. Both commands remain available from the tray menu."
+            : captureUnavailable
+                ? $"{_currentCaptureHotkey.DisplayText} is already used by another app. Capture Region remains available from the tray menu."
+                : $"{_currentHistoryHotkey.DisplayText} is already used by another app. Snip History remains available from the tray menu.";
         _icon.ShowBalloonTip(6000);
     }
 
@@ -114,10 +137,15 @@ public sealed class TrayController : IDisposable
 
     private IntPtr WindowProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (message == NativeMethods.WmHotkey && wParam.ToInt32() == HotkeyId)
+        if (message == NativeMethods.WmHotkey && wParam.ToInt32() == CaptureHotkeyId)
         {
             handled = true;
             CaptureRequested?.Invoke(this, EventArgs.Empty);
+        }
+        else if (message == NativeMethods.WmHotkey && wParam.ToInt32() == HistoryHotkeyId)
+        {
+            handled = true;
+            HistoryRequested?.Invoke(this, EventArgs.Empty);
         }
         return IntPtr.Zero;
     }
@@ -126,7 +154,8 @@ public sealed class TrayController : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        if (_hotkeyRegistered) NativeMethods.UnregisterHotKey(_messageWindow.Handle, HotkeyId);
+        if (_captureHotkeyRegistered) NativeMethods.UnregisterHotKey(_messageWindow.Handle, CaptureHotkeyId);
+        if (_historyHotkeyRegistered) NativeMethods.UnregisterHotKey(_messageWindow.Handle, HistoryHotkeyId);
         _messageWindow.RemoveHook(WindowProc);
         _messageWindow.Dispose();
         _icon.Visible = false;

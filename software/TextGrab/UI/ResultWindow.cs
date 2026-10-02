@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using TextGrab.Clipboard;
 using TextGrab.Core;
+using TextGrab.History;
 using TextGrab.Interop;
 using Forms = System.Windows.Forms;
 using WpfButton = System.Windows.Controls.Button;
@@ -15,12 +16,16 @@ public sealed class ResultWindow : Window
     private readonly WpfTextBox _text;
     private readonly TextBlock _status;
     private readonly ClipboardService _clipboard;
+    private readonly HistoryStore _history;
 
     private bool _allowClose;
+    private bool _replacingText;
+    private HistoryEntry? _activeEntry;
 
-    public ResultWindow(ClipboardService clipboard)
+    public ResultWindow(ClipboardService clipboard, HistoryStore history)
     {
         _clipboard = clipboard;
+        _history = history;
         Title = "TextGrab result";
         Icon = AppIcon.CreateImageSource();
         Width = 620;
@@ -64,7 +69,12 @@ public sealed class ResultWindow : Window
         grid.Children.Add(_text);
         Content = grid;
 
-        _text.TextChanged += (_, _) => _status.Text = string.Empty;
+        _text.TextChanged += (_, _) =>
+        {
+            _status.Text = string.Empty;
+            if (!_replacingText && _activeEntry is not null)
+                _history.UpdateText(_activeEntry.Id, _text.Text);
+        };
         copy.Click += async (_, _) => await CopyCurrentTextAsync();
         Closing += (_, e) =>
         {
@@ -79,9 +89,12 @@ public sealed class ResultWindow : Window
         };
     }
 
-    public void SetResult(string raw)
+    public void SetResult(HistoryEntry entry)
     {
-        LoadResultText(raw);
+        _activeEntry = null;
+        ReplaceTextAndClearUndo(entry.Text);
+        _activeEntry = entry;
+        _status.Text = string.Empty;
         if (!IsVisible) Show();
         PositionOnCursorMonitor();
         Activate();
@@ -90,6 +103,7 @@ public sealed class ResultWindow : Window
 
     public void ClearAndHide()
     {
+        _activeEntry = null;
         ReplaceTextAndClearUndo(string.Empty);
         _status.Text = string.Empty;
         Hide();
@@ -101,6 +115,7 @@ public sealed class ResultWindow : Window
 
     internal void LoadResultText(string raw)
     {
+        _activeEntry = null;
         ReplaceTextAndClearUndo(TextCleanup.Clean(raw));
         _status.Text = string.Empty;
     }
@@ -109,9 +124,17 @@ public sealed class ResultWindow : Window
     {
         // Disabling undo clears WPF's private undo manager, including references
         // to text from the prior capture. Re-enable it for normal current-result edits.
-        _text.IsUndoEnabled = false;
-        _text.Text = value;
-        _text.IsUndoEnabled = true;
+        _replacingText = true;
+        try
+        {
+            _text.IsUndoEnabled = false;
+            _text.Text = value;
+            _text.IsUndoEnabled = true;
+        }
+        finally
+        {
+            _replacingText = false;
+        }
     }
 
     public void ForceClose()
